@@ -22,6 +22,16 @@
 
 当用户明确要求验证目标 `tests/` 尚未覆盖的具体算子时，可以从只读旧仓库迁移一个最小算子测试到目标 `tests/`。记录必须包含旧测试来源、为什么现有测试无法表达、覆盖的唯一语义和后续是否保留；这不等于开放新增测试矩阵，也不允许直接运行旧仓库测试。
 
+## 每条 pass 的实际推进顺序
+
+迁移前先在目标 `tests/` 搜索对应算子的语义入口、`ntl` 调用和设备 fixture。找到覆盖后先运行 0.26 原状测试；没有覆盖时，才从 `/home/swy/infini/ntops` 找对应 kernel/test，并迁移一个最小案例。ntops 是参考来源，不是第二套回归套件。
+
+每个案例都分别记录源码/lowering、工具链 build 和 NPU runtime correctness。0.26 已通过就登记“无需迁移”；部分通过就按失败的 shape、dtype、layout、mask 或控制流拆分路径；完全失败才逐条对照 0.25 pass。旧 pass 必须拆成单个变换逐次迁移，每一步都跑同一案例和非目标核心回归，直到找到最小必要改动。不能把整个 0.25 文件直接套进 0.26。
+
+公共层只有在现有 IR 或 emitter 无法表达一个后端无关契约时才修改；已能表达的语义优先放在 Ascend 私有 SSA pass。每个变体都保留中文记录和可比较的执行编号，避免把“偶然通过”“未执行”或“改成 skip”误判为修复。
+
+以 attention 为例，先保留当前 0.26 已通过的边界，再从 `seq_len=1, causal=False` 的失败路径开始，分别验证尾块 mask、sentinel 和 `exp2` 后 mask 等最小变化；只有能证明某一步是必要且不影响其他分支，才保留对应私有改动。
+
 ## 后端私有代码位置
 
 backend class、schedule 和注册放在 `backends/<backend>.py`；较大的 SSA 语义修正拆到同目录的 `<backend>_passes.py`。共享 `emitters/<language>.py` 只承载语言共性和少量已验证的 backend 路由参数，Ascend 专用数值改写必须留在 Ascend 私有 SSA pass。独立语法或 intrinsic 才新增私有 emitter，设备工具链和 runtime 则放 materializer。公共 compiler/pass/frontend 只保留后端无关契约。
