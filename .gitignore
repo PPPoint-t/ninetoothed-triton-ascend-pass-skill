@@ -1,0 +1,7 @@
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+.coverage
+运行记录/
+*.lock
