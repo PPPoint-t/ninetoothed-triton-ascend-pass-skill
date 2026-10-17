@@ -236,10 +236,18 @@ def validate_selector(target, node):
         or not path.is_file()
     ):
         raise WorkflowError(f"测试入口不在允许的 tests/ 算子范围：{node}")
+    # Several long-standing NineToothed operator tests use pytest's plain
+    # ``def test(...)`` entry point (with parametrization supplying the
+    # concrete node id).  It is still an exact function selector, so accept
+    # that name alongside the conventional ``test_*`` form.  Wildcards and
+    # nested selectors remain rejected below.
+    function_name, parameterized, suffix = function.partition("[")
     if (
-        not function.startswith("test_")
+        function_name != "test"
+        and not function_name.startswith("test_")
         or "::" in function
         or any(c in filename for c in "*?[")
+        or (parameterized and not suffix.endswith("]"))
     ):
         raise WorkflowError(f"测试入口必须精确到算子函数：{node}")
     return path
@@ -383,7 +391,12 @@ def collect(run, layer, group, backend, match=None):
     evidence.mkdir(parents=True, exist_ok=True)
     collection = evidence / "收集.md"
     collection.unlink(missing_ok=True)
-    env = child_env(cfg["目标仓库"], NT_PASS_COLLECTION=collection)
+    collection_backend = "triton-ascend" if layer == "设备" else "triton"
+    env = child_env(
+        cfg["目标仓库"],
+        NT_PASS_COLLECTION=collection,
+        NT_PASS_BACKEND=collection_backend,
+    )
     command = pytest_command("--collect-only", "-q", *selectors)
     result = bounded_process(command, cfg["目标仓库"], env, evidence / "收集.log", 90)
     if (
@@ -876,7 +889,7 @@ def begin_rule(run, rule):
 
 
 FOCUS = {
-    "M01": ("libdevice-fmod",),
+    "M01": ("fmod",),
     "M02": ("masked-copy", "row-reduction"),
     "M03": ("clamp",),
     "M04": ("float64",),

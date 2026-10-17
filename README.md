@@ -14,6 +14,20 @@
 - 脚本不会修改编译器实现、断言或精度阈值；语义迁移由使用本 skill 的 agent 完成。
 - 不自动提交/推送、安装依赖、清全局缓存、重置设备或结束其他人的任务。
 
+## 测试文件变更规则
+
+工作流默认运行目标仓库已有的算子测试。新增 Triton-Ascend 测试文件不是常规推进手段：先把 backend 参数、设备 fixture 或必要的断言并入原有测试。只有原有测试无法表达独立的 source/JIT/runtime 或 Launch ABI 契约，并且用户明确进入最终专用测试阶段时，才创建一个聚焦文件；必须在中文记录中说明不能复用哪一个原测试以及新增文件的唯一覆盖范围。
+
+当前阶段不创建 `test_triton_ascend_*.py`、lockstep 矩阵或共享 case 工厂。删除或暂缓专用测试后要同步清单，不能留下指向不存在文件的测试入口。专用测试只能补充原有算子回归，不能替代原有测试，也不能用 skip/xfail 隐藏编译、数值或设备失败。
+
+当用户明确要求验证目标 `tests/` 尚未覆盖的具体算子时，可以从只读旧仓库迁移一个最小算子测试到目标 `tests/`。记录必须包含旧测试来源、为什么现有测试无法表达、覆盖的唯一语义和后续是否保留；这不等于开放新增测试矩阵，也不允许直接运行旧仓库测试。
+
+## 后端私有代码位置
+
+backend class、schedule 和注册放在 `backends/<backend>.py`；较大的 SSA 语义修正拆到同目录的 `<backend>_passes.py`。共享 `emitters/<language>.py` 只承载语言共性和少量已验证的 backend 路由参数，Ascend 专用数值改写必须留在 Ascend 私有 SSA pass。独立语法或 intrinsic 才新增私有 emitter，设备工具链和 runtime 则放 materializer。公共 compiler/pass/frontend 只保留后端无关契约。
+
+对具体算子采用三步对照：移除改动建立基线，恢复最小共享映射区分缺失语言支持，再验证私有 SSA rewrite 是否消除设备编译或数值错误。每一步分别记录 source、build 和 runtime 结果。
+
 ## 文件组织
 
 ```text
@@ -116,9 +130,9 @@ python scripts/workflow.py collect --batch "$NT_PASS_BATCH" \
 
 命令打印实际计划路径，带筛选摘要；后续 `run --plan` 使用这个真实路径。筛选后的计划不能替代固定核心回归。
 
-阶段结束使用 `--group 完整` 收集/运行两层全部清单参数。当前完整清单复用已有 22 个语义类别的 source 对照和 NPU portable matrix；不是 tests/ 的全部算子、全部形状，更不是框架/AOT tests。需要其他算子或边界时，先扩展精确函数清单并更新分类，再重新收集。
+阶段结束使用 `--group 完整` 收集/运行清单中的原有算子参数。当前清单优先验证已有 `tests/` 算子在显式 `triton-ascend` 路由下的设备行为；不是 tests/ 的全部算子、全部形状，更不是框架/AOT tests。源码双 target 对照和独立 Launch ABI 测试留到用户明确进入最终专用测试阶段后再加入。需要其他算子或边界时，先扩展已有测试的参数或入口并更新分类，再重新收集；不能先创建新的测试文件来填矩阵，除非用户明确要求迁移某个具体缺失算子。
 
-完整设备集包含 attention、scan、dropout 等已知风险项。它们失败仍保持失败；设备故障则停止队列。首次使用先跑核心，不直接用完整集验证设备是否正常。
+当前设备清单先覆盖原有的逐元素、clone、masked-load/pad、归约、matmul、softmax 和 CANN `libdevice.fmod` 入口；attention 只登记了 `seq_len=1` 的边界节点用于保留已知 correctness failure。scan、dropout 等其余风险项在用户明确进入最终专用测试阶段前不自动加入；加入后的失败仍保持失败，设备故障则停止队列。首次使用先跑核心，不直接用完整集验证设备是否正常。
 
 ## 修改后比较与规则完成
 
@@ -200,7 +214,7 @@ python /home/swy/.codex/skills/.system/skill-creator/scripts/quick_validate.py .
 ## 当前限制
 
 - 语义迁移需要运行中的 agent；控制器不自己调用 LLM 或后台反复修改代码。
-- 默认只选现有 portable matrices，新增模式需要明确扩展清单和分类映射。
+- 默认只选现有 `tests/` 算子入口，新增模式先并入原测试并明确扩展清单和分类映射；用户明确要求迁移具体缺失算子时可增加一个最小测试文件，并记录其来源和保留理由。
 - lazy toolchain build 和 runtime 目前同进程，未提供独立 build-only 性能/正确性结论。
 - 本机无 NVIDIA/TileLang runtime 验证环境；旧 Triton 的源码对照不代表它们运行回归已通过。
 - 本地设备锁不等于全机调度器；健康小运算不等于证明所有内核都不会 hang。

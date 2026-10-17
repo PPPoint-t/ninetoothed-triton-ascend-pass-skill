@@ -175,6 +175,20 @@ def test_scope_rejects_external_and_symlink(batch, tmp_path):
             engine.validate_selector(cfg["目标仓库"], node)
 
 
+def test_scope_accepts_plain_pytest_test_entry(batch):
+    cfg = engine.config(batch)
+    assert (
+        engine.validate_selector(cfg["目标仓库"], "tests/test_operator.py::test").name
+        == "test_operator.py"
+    )
+    assert (
+        engine.validate_selector(
+            cfg["目标仓库"], "tests/test_operator.py::test[triton-ascend]"
+        ).name
+        == "test_operator.py"
+    )
+
+
 def test_collect_zero_is_error(batch, monkeypatch):
     def collect(command, cwd, env, log, timeout):
         atomic_write(log, "collected")

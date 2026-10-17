@@ -20,16 +20,38 @@ NAMES = {
     "矩阵布局": "matmul matmul-transpose addmm conv2d layout-transfer",
     "融合数学": "softmax attention libdevice-fmod dropout",
 }
+ORIGINAL_OPERATOR_GROUPS = {
+    "tests/test_add.py": "逐元素索引",
+    "tests/test_clone.py": "逐元素索引",
+    "tests/test_data_ptr.py": "逐元素索引",
+    "tests/test_expand.py": "逐元素索引",
+    "tests/test_pad.py": "逐元素索引",
+    "tests/test_tiled_reduction_loops.py": "归约循环",
+    "tests/test_triton_reduction_schedule.py": "归约循环",
+    "tests/test_triton_block_reductions.py": "归约循环",
+    "tests/test_matmul.py": "矩阵布局",
+    "tests/test_addmm.py": "矩阵布局",
+    "tests/test_conv2d.py": "矩阵布局",
+    "tests/test_triton_layout_transfer_runtime.py": "矩阵布局",
+    "tests/test_softmax.py": "融合数学",
+    "tests/test_attention.py": "融合数学",
+    "tests/test_dropout.py": "融合数学",
+    "tests/test_pow.py": "融合数学",
+    "tests/test_libdevice_calls.py": "融合数学",
+}
 
 
 def classification(item):
     params = getattr(getattr(item, "callspec", None), "params", {})
-    backend = params.get("runtime_contract", params.get("target_contract", "未知"))
+    backend = params.get(
+        "runtime_contract",
+        params.get("target_contract", os.environ.get("NT_PASS_BACKEND", "未知")),
+    )
     group = SOURCE_GROUPS.get(params.get("category"))
     if group is None:
         group = next(
             (k for k, names in NAMES.items() if params.get("name") in names.split()),
-            "未知",
+            ORIGINAL_OPERATOR_GROUPS.get(item.nodeid.split("::", 1)[0], "未知"),
         )
     return str(backend), group
 
